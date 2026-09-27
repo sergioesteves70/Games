@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Caça ao Pato 8-Bit - BOT 1 vs BOT 2 (Levantamento de Voo)</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Pixel Art Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Press Start 2P', cursive;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        canvas, .pixelated {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        @keyframes gunFlash {
+            0% { background-color: rgba(255, 255, 255, 0.9); }
+            100% { background-color: transparent; }
+        }
+
+        .flash {
+            animation: gunFlash 0.08s ease-out;
+        }
+
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
+
+    <div class="w-full max-w-4xl flex flex-col items-center">
+        
+        <header class="text-center mb-3">
+            <h1 class="text-xl sm:text-3xl text-yellow-400 tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,1)] flex items-center justify-center gap-3">
+                <span class="text-blue-400">🤖</span> BOT 1 VS BOT 2 <span class="text-amber-500">🤖</span>
+            </h1>
+            <p class="text-[10px] sm:text-xs text-gray-400 mt-1">1 a 5 Patos Aleatórios • Caça Inicia Após Levantar Voo</p>
+        </header>
+
+        <div id="gameContainer" class="relative w-full aspect-[4/3] max-h-[70vh] bg-sky-400 rounded-xl overflow-hidden border-4 border-yellow-500 shadow-2xl shadow-yellow-500/10">
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+            <div class="absolute inset-0 scanlines opacity-40"></div>
+
+            <!-- Overlay Início -->
+            <div id="startOverlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-4 text-center z-20">
+                <div class="bg-gray-800 border-4 border-white p-6 rounded-lg max-w-md w-full shadow-2xl">
+                    <h2 class="text-2xl text-yellow-400 mb-4 animate-pulse">DUELO DE BOTS</h2>
+                    <div class="text-left text-[10px] sm:text-xs leading-relaxed space-y-3 mb-6 text-gray-200">
+                        <p class="text-blue-400 font-bold">🔵 BOT 1 (Azul)</p>
+                        <p class="text-amber-400 font-bold">🟠 BOT 2 (Laranja)</p>
+                        <p class="text-green-400 font-bold">⚠️ REGRAS:</p>
+                        <p>1. Surgem entre <strong>1 a 5 patos</strong> por vaga.<br>2. Os Bots só podem disparar <strong>depois dos patos levantarem voo</strong> do chão!</p>
+                    </div>
+
+                    <button id="startBtn" class="w-full bg-red-600 hover:bg-red-500 active:translate-y-1 text-white py-3 px-6 rounded border-b-4 border-red-800 text-sm tracking-wider transition-all duration-150 uppercase font-bold">
+                        INICIAR DUELO
+                    </button>
+                </div>
+            </div>
+
+            <!-- Overlay Game Over / Vitória -->
+            <div id="gameOverOverlay" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center p-4 text-center z-20 hidden">
+                <div class="bg-gray-800 border-4 border-yellow-500 p-6 rounded-lg max-w-md w-full shadow-2xl">
+                    <h2 id="winnerText" class="text-2xl sm:text-3xl text-yellow-400 mb-2">FIM DO DUELO</h2>
+                    <p id="gameOverReason" class="text-xs text-gray-300 mb-4">Resultado Final:</p>
+                    
+                    <div class="bg-black/50 p-4 rounded border border-gray-700 mb-6 space-y-3 text-xs">
+                        <div class="flex justify-between items-center text-blue-400 font-bold">
+                            <span>🤖 BOT 1 (AZUL):</span>
+                            <span id="finalScore1" class="text-lg">0</span>
+                        </div>
+                        <div class="flex justify-between items-center text-amber-500 font-bold">
+                            <span>🤖 BOT 2 (LARANJA):</span>
+                            <span id="finalScore2" class="text-lg">0</span>
+                        </div>
+                    </div>
+
+                    <button id="restartBtn" class="w-full bg-green-600 hover:bg-green-500 active:translate-y-1 text-white py-3 px-6 rounded border-b-4 border-green-800 text-sm tracking-wider transition-all duration-150 uppercase font-bold">
+                        NOVO DUELO
+                    </button>
+                </div>
+            </div>
+
+            <div id="flashOverlay" class="absolute inset-0 pointer-events-none z-10"></div>
+        </div>
+
+        <!-- Placar e HUD Versus -->
+        <div class="w-full bg-gray-800 border-x-4 border-b-4 border-yellow-500 rounded-b-xl p-3 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-xs">
+            
+            <!-- Placar BOT 1 -->
+            <div class="flex items-center space-x-2 bg-blue-950/80 border border-blue-500 px-3 py-1.5 rounded">
+                <span class="text-blue-400 font-bold">BOT 1:</span>
+                <span id="score1Display" class="text-white font-bold">000000</span>
+                <div id="ammo1Container" class="flex space-x-0.5 ml-1"></div>
+            </div>
+
+            <!-- Estado da Vaga -->
+            <div class="bg-black/60 px-3 py-1.5 rounded border border-gray-700 flex flex-col items-center">
+                <span id="statusDisplay" class="text-yellow-400 font-bold text-[9px]">A LEVANTAR VOO...</span>
+                <span class="text-gray-400 text-[9px]">RODADA: <strong id="roundDisplay" class="text-green-400">1/5</strong></span>
+            </div>
+
+            <!-- Placar BOT 2 -->
+            <div class="flex items-center space-x-2 bg-amber-950/80 border border-amber-500 px-3 py-1.5 rounded">
+                <span class="text-amber-400 font-bold">BOT 2:</span>
+                <span id="score2Display" class="text-white font-bold">000000</span>
+                <div id="ammo2Container" class="flex space-x-0.5 ml-1"></div>
+            </div>
+
+        </div>
+
+        <!-- Painel de Controlo -->
+        <div class="w-full flex justify-between items-center mt-3 text-[10px] text-gray-400 px-1">
+            <div class="flex items-center space-x-2">
+                <button id="muteBtn" class="bg-gray-800 hover:bg-gray-700 text-white px-2.5 py-1.5 rounded border border-gray-600 transition-colors">
+                    🔊 SOM
+                </button>
+            </div>
+            <div>
+                <span class="text-gray-400">PATOS NA VAGA: <strong id="duckCountDisplay" class="text-yellow-400">0</strong></span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        class SoundEngine {
+            constructor() { this.ctx = null; this.muted = false; }
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') this.ctx.resume();
+            }
+            playShot() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const bufferSize = this.ctx.sampleRate * 0.15;
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) output[i] = Math.random() * 2 - 1;
+                const whiteNoise = this.ctx.createBufferSource();
+                whiteNoise.buffer = buffer;
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1200, now);
+                filter.frequency.linearRampToValueAtTime(100, now + 0.15);
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(0.8, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                whiteNoise.connect(filter); filter.connect(gain); gain.connect(this.ctx.destination);
+                whiteNoise.start(now);
+            }
+            playHit() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(450, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(now); osc.stop(now + 0.15);
+            }
+            playQuack() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.setValueAtTime(450, now + 0.05);
+                gain.gain.setValueAtTime(0.15, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+                osc.connect(gain); gain.connect(this.ctx.destination);
+                osc.start(now); osc.stop(now + 0.1);
+            }
+            playFanfare() {
+                if (this.muted || !this.ctx) return;
+                const notes = [261.63, 329.63, 392.00, 523.25];
+                const now = this.ctx.currentTime;
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.12);
+                    osc.connect(gain); gain.connect(this.ctx.destination);
+                    osc.start(now + idx * 0.1); osc.stop(now + idx * 0.1 + 0.12);
+                });
+            }
+        }
+
+        const soundEngine = new SoundEngine();
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const flashOverlay = document.getElementById('flashOverlay');
+
+        const score1Display = document.getElementById('score1Display');
+        const score2Display = document.getElementById('score2Display');
+        const ammo1Container = document.getElementById('ammo1Container');
+        const ammo2Container = document.getElementById('ammo2Container');
+        const roundDisplay = document.getElementById('roundDisplay');
+        const statusDisplay = document.getElementById('statusDisplay');
+        const duckCountDisplay = document.getElementById('duckCountDisplay');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const muteBtn = document.getElementById('muteBtn');
+
+        const GAME_WIDTH = 320;
+        const GAME_HEIGHT = 240;
+
+        let gameState = 'MENU';
+        let round = 1;
+        const maxRounds = 5;
+
+        // Estado Bots
+        let score1 = 0, ammo1 = 5, bot1Cooldown = 0;
+        let score2 = 0, ammo2 = 5, bot2Cooldown = 0;
+
+        let activeDucks = [];
+        let wavesInRound = 0;
+        let shotsVisuals = [];
+
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        class Duck {
+            constructor(speedMultiplier = 1) {
+                this.width = 24;
+                this.height = 22;
+                this.x = Math.random() * (GAME_WIDTH - 80) + 40;
+                this.y = 175; // Começa no chão (atrás da relva)
+                
+                const baseSpeed = 1.2 + Math.random() * 0.8;
+                this.vx = (Math.random() < 0.5 ? 1 : -1) * baseSpeed * speedMultiplier;
+                this.vy = -(1.5 + Math.random() * 0.8) * speedMultiplier;
+
+                // ESTADOS: TAKEOFF (Levantar Voo) -> FLYING (Em Voo) -> HIT -> FALLING
+                this.state = 'TAKEOFF';
+                this.takeoffTargetY = Math.random() * 60 + 50; // Altura onde termina a descolagem
+                
+                this.frame = 0;
+                this.animTimer = 0;
+                this.colorType = Math.random() < 0.5 ? 'CLASSIC' : 'RED';
+            }
+
+            update() {
+                if (this.state === 'TAKEOFF') {
+                    // Sobe na vertical para simular o levantamento de voo
+                    this.y -= 1.8;
+                    this.animTimer++;
+                    if (this.animTimer % 4 === 0) this.frame = (this.frame + 1) % 3;
+
+                    // Quando atinge a altura livre, entra em voo de caça
+                    if (this.y <= this.takeoffTargetY) {
+                        this.state = 'FLYING';
+                        soundEngine.playQuack();
+                    }
+                } 
+                else if (this.state === 'FLYING') {
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    if (this.x <= 10 || this.x + this.width >= GAME_WIDTH - 10) this.vx *= -1;
+                    if (this.y <= 15) this.vy = Math.abs(this.vy);
+                    else if (this.y > 150) this.vy = -Math.abs(this.vy);
+
+                    this.animTimer++;
+                    if (this.animTimer % 8 === 0) this.frame = (this.frame + 1) % 3;
+                } 
+                else if (this.state === 'HIT') {
+                    this.animTimer++;
+                    if (this.animTimer > 12) this.state = 'FALLING';
+                } 
+                else if (this.state === 'FALLING') {
+                    this.y += 3.5;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+                if (this.vx < 0 && (this.state === 'FLYING' || this.state === 'TAKEOFF')) {
+                    ctx.translate(this.x + this.width, this.y);
+                    ctx.scale(-1, 1);
+                } else {
+                    ctx.translate(this.x, this.y);
+                }
+
+                let headColor = this.colorType === 'RED' ? '#ef4444' : '#22c55e';
+                let bodyColor = '#854d0e';
+
+                if (this.state === 'TAKEOFF' || this.state === 'FLYING') {
+                    ctx.fillStyle = bodyColor; ctx.fillRect(4, 8, 14, 10);
+                    ctx.fillStyle = '#fef08a';
+                    if (this.frame === 0) ctx.fillRect(8, 2, 6, 8);
+                    else if (this.frame === 1) ctx.fillRect(6, 9, 10, 4);
+                    else ctx.fillRect(8, 11, 6, 8);
+                    ctx.fillStyle = headColor; ctx.fillRect(14, 2, 7, 7);
+                    ctx.fillStyle = '#f97316'; ctx.fillRect(21, 5, 5, 3);
+                } else if (this.state === 'HIT' || this.state === 'FALLING') {
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(2, 2, 18, 16);
+                    ctx.fillStyle = headColor; ctx.fillRect(6, 4, 10, 12);
+                }
+                ctx.restore();
+            }
+
+            isHit(gx, gy) {
+                // Só pode ser atingido se JÁ ESTIVER EM VOO
+                if (this.state !== 'FLYING') return false;
+                return (gx >= this.x - 6 && gx <= this.x + this.width + 6 && gy >= this.y - 6 && gy <= this.y + this.height + 6);
+            }
+        }
+
+        function drawBackground() {
+            ctx.fillStyle = '#38bdf8'; ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            ctx.fillStyle = '#78350f'; ctx.fillRect(25, 120, 14, 60);
+            ctx.fillStyle = '#15803d'; ctx.fillRect(10, 80, 44, 45);
+            ctx.fillStyle = '#166534'; ctx.fillRect(230, 145, 55, 35);
+            ctx.fillStyle = '#84cc16'; ctx.fillRect(0, 175, GAME_WIDTH, 12);
+            ctx.fillStyle = '#65a30d'; ctx.fillRect(0, 187, GAME_WIDTH, 53);
+        }
+
+        function updateHUD() {
+            score1Display.textContent = String(score1).padStart(6, '0');
+            score2Display.textContent = String(score2).padStart(6, '0');
+            roundDisplay.textContent = `${round}/${maxRounds}`;
+            duckCountDisplay.textContent = activeDucks.length;
+
+            // Munição Bot 1
+            ammo1Container.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                const b = document.createElement('div');
+                b.className = `w-1.5 h-3 rounded-xs ${i < ammo1 ? 'bg-blue-400' : 'bg-gray-700'}`;
+                ammo1Container.appendChild(b);
+            }
+
+            // Munição Bot 2
+            ammo2Container.innerHTML = '';
+            for (let i = 0; i < 5; i++) {
+                const b = document.createElement('div');
+                b.className = `w-1.5 h-3 rounded-xs ${i < ammo2 ? 'bg-amber-400' : 'bg-gray-700'}`;
+                ammo2Container.appendChild(b);
+            }
+        }
+
+        function triggerGunFlash() {
+            flashOverlay.classList.add('flash');
+            setTimeout(() => { flashOverlay.classList.remove('flash'); }, 60);
+        }
+
+        function spawnWave() {
+            if (wavesInRound >= 3) {
+                if (round >= maxRounds) {
+                    endGameVersus();
+                } else {
+                    round++;
+                    wavesInRound = 0;
+                    setTimeout(spawnWave, 1500);
+                }
+                return;
+            }
+
+            // QUANTIDADE ALEATÓRIA ENTRE 1 E 5 PATOS
+            const duckCount = Math.floor(Math.random() * 5) + 1;
+            
+            // Ajustar munição proporcionalmente ao número de patos
+            ammo1 = Math.max(3, duckCount + 1);
+            ammo2 = Math.max(3, duckCount + 1);
+            
+            activeDucks = [];
+            const speed = 1 + round * 0.2;
+            for (let i = 0; i < duckCount; i++) {
+                activeDucks.push(new Duck(speed + Math.random() * 0.3));
+            }
+
+            wavesInRound++;
+            updateHUD();
+        }
+
+        function endGameVersus() {
+            gameState = 'GAME_OVER';
+            document.getElementById('finalScore1').textContent = String(score1).padStart(6, '0');
+            document.getElementById('finalScore2').textContent = String(score2).padStart(6, '0');
+
+            const winnerText = document.getElementById('winnerText');
+            if (score1 > score2) {
+                winnerText.textContent = "🏆 VITÓRIA DO BOT 1!";
+                winnerText.className = "text-2xl sm:text-3xl text-blue-400 mb-2";
+            } else if (score2 > score1) {
+                winnerText.textContent = "🏆 VITÓRIA DO BOT 2!";
+                winnerText.className = "text-2xl sm:text-3xl text-amber-400 mb-2";
+            } else {
+                winnerText.textContent = "🤝 EMPATE PERFEITO!";
+                winnerText.className = "text-2xl sm:text-3xl text-yellow-400 mb-2";
+            }
+
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        function botShoot(botId, x, y) {
+            if (gameState !== 'PLAYING') return;
+
+            if (botId === 1 && ammo1 > 0) ammo1--;
+            else if (botId === 2 && ammo2 > 0) ammo2--;
+            else return;
+
+            soundEngine.playShot();
+            triggerGunFlash();
+
+            const color = botId === 1 ? '#3b82f6' : '#f59e0b';
+            shotsVisuals.push({ x, y, color, timer: 10 });
+
+            activeDucks.forEach(duck => {
+                if (duck.isHit(x, y)) {
+                    duck.state = 'HIT';
+                    soundEngine.playHit();
+                    if (botId === 1) score1 += 1000;
+                    if (botId === 2) score2 += 1000;
+                }
+            });
+
+            updateHUD();
+        }
+
+        function updateVersusBots() {
+            if (gameState !== 'PLAYING') return;
+
+            // FILTRAR APENAS PATOS QUE JÁ LEVANTARAM VOO COMPLETAMENTE
+            const huntableDucks = activeDucks.filter(d => d.state === 'FLYING');
+
+            // Atualização do texto de estado
+            if (activeDucks.some(d => d.state === 'TAKEOFF')) {
+                statusDisplay.textContent = "A LEVANTAR VOO...";
+                statusDisplay.className = "text-yellow-400 font-bold text-[9px] animate-pulse";
+            } else if (huntableDucks.length > 0) {
+                statusDisplay.textContent = "🎯 CAÇA ABERTA!";
+                statusDisplay.className = "text-green-400 font-bold text-[9px]";
+            } else {
+                statusDisplay.textContent = "SEM ALVOS";
+                statusDisplay.className = "text-gray-400 text-[9px]";
+            }
+
+            // BOT 1 Dispara se existirem patos em voo
+            if (bot1Cooldown > 0) {
+                bot1Cooldown--;
+            } else if (huntableDucks.length > 0 && ammo1 > 0) {
+                const target = huntableDucks[0];
+                const rx = target.x + target.width / 2 + (Math.random() * 4 - 2);
+                const ry = target.y + target.height / 2 + (Math.random() * 4 - 2);
+                botShoot(1, rx, ry);
+                bot1Cooldown = Math.floor(Math.random() * 6) + 8;
+            }
+
+            // BOT 2 Dispara se existirem patos em voo
+            if (bot2Cooldown > 0) {
+                bot2Cooldown--;
+            } else if (huntableDucks.length > 0 && ammo2 > 0) {
+                const target = huntableDucks[huntableDucks.length - 1];
+                const rx = target.x + target.width / 2 + (Math.random() * 4 - 2);
+                const ry = target.y + target.height / 2 + (Math.random() * 4 - 2);
+                botShoot(2, rx, ry);
+                bot2Cooldown = Math.floor(Math.random() * 6) + 10;
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            drawBackground();
+
+            if (gameState === 'PLAYING') {
+                let allFinished = true;
+
+                activeDucks.forEach(duck => {
+                    duck.update();
+                    duck.draw(ctx);
+
+                    if (duck.state === 'FLYING' && duck.y < -30) duck.state = 'ESCAPED';
+                    if (duck.state === 'FALLING' && duck.y > 165) duck.state = 'DEAD';
+
+                    if (duck.state === 'TAKEOFF' || duck.state === 'FLYING' || duck.state === 'HIT' || duck.state === 'FALLING') {
+                        allFinished = false;
+                    }
+                });
+
+                // Desenhar miras dos disparos
+                shotsVisuals.forEach((shot, idx) => {
+                    ctx.save();
+                    ctx.strokeStyle = shot.color;
+                    ctx.lineWidth = 2;
+                    ctx.beginPath();
+                    ctx.arc(shot.x, shot.y, 6, 0, Math.PI * 2);
+                    ctx.stroke();
+                    ctx.restore();
+
+                    shot.timer--;
+                    if (shot.timer <= 0) shotsVisuals.splice(idx, 1);
+                });
+
+                if (allFinished && activeDucks.length > 0) {
+                    activeDucks = [];
+                    setTimeout(spawnWave, 800);
+                }
+
+                updateVersusBots();
+            }
+
+            requestAnimationFrame(gameLoop);
+        }
+
+        startBtn.addEventListener('click', () => {
+            soundEngine.init();
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+            score1 = 0; score2 = 0; round = 1; wavesInRound = 0;
+            gameState = 'PLAYING';
+            soundEngine.playFanfare();
+            spawnWave();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            soundEngine.init();
+            gameOverOverlay.classList.add('hidden');
+            score1 = 0; score2 = 0; round = 1; wavesInRound = 0;
+            gameState = 'PLAYING';
+            spawnWave();
+        });
+
+        muteBtn.addEventListener('click', () => {
+            soundEngine.init();
+            soundEngine.muted = !soundEngine.muted;
+            muteBtn.textContent = soundEngine.muted ? '🔇 SOM: OFF' : '🔊 SOM: ON';
+        });
+
+        window.onload = () => {
+            updateHUD();
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

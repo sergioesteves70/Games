@@ -1,0 +1,878 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Caça ao Pato 8-Bit - Duck Hunt Arcade</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Google Fonts Pixel Art Font -->
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            font-family: 'Press Start 2P', cursive;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+        }
+
+        /* Renderização de Imagem Pixelada */
+        canvas, .pixelated {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+        }
+
+        /* Animação do flash do tiro */
+        @keyframes gunFlash {
+            0% { background-color: rgba(255, 255, 255, 0.9); }
+            100% { background-color: transparent; }
+        }
+
+        .flash {
+            animation: gunFlash 0.08s ease-out;
+        }
+
+        /* Cursor Personalizado em formato de Mira Retro */
+        .game-cursor {
+            cursor: crosshair;
+        }
+
+        /* Efeito CRT Retro scanlines opcional */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.25) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+    </style>
+</head>
+<body class="bg-gray-900 text-white min-h-screen flex flex-col items-center justify-center p-2 sm:p-4 overflow-hidden">
+
+    <!-- Content Wrapper -->
+    <div class="w-full max-w-4xl flex flex-col items-center">
+        
+        <!-- Cabeçalho Principal -->
+        <header class="text-center mb-3">
+            <h1 class="text-xl sm:text-3xl text-yellow-400 tracking-wider drop-shadow-[0_4px_0_rgba(0,0,0,1)] flex items-center justify-center gap-3">
+                <span class="text-red-500">🦆</span> TIRO AO PATO 8-BIT <span class="text-red-500">🦆</span>
+            </h1>
+            <p class="text-[10px] sm:text-xs text-gray-400 mt-1">Estilo Scratch / Arcade Retrô Classic</p>
+        </header>
+
+        <!-- Container do Jogo (Canvas + Overlay) -->
+        <div id="gameContainer" class="relative w-full aspect-[4/3] max-h-[70vh] bg-sky-400 rounded-xl overflow-hidden border-4 border-yellow-500 shadow-2xl shadow-yellow-500/10 game-cursor">
+            
+            <!-- Canvas Principal -->
+            <canvas id="gameCanvas" class="w-full h-full block"></canvas>
+            
+            <!-- Camada de Scanlines Retrô -->
+            <div class="absolute inset-0 scanlines opacity-40"></div>
+
+            <!-- Overlay Tela de Início / Menu -->
+            <div id="startOverlay" class="absolute inset-0 bg-black/80 flex flex-col items-center justify-center p-4 text-center z-20">
+                <div class="bg-gray-800 border-4 border-white p-6 rounded-lg max-w-md w-full shadow-2xl">
+                    <h2 class="text-2xl text-yellow-400 mb-4 animate-pulse">NOVO JOGO</h2>
+                    
+                    <div class="text-left text-[10px] sm:text-xs leading-relaxed space-y-3 mb-6 text-gray-200">
+                        <p class="text-green-400 font-bold">🎯 COMO JOGAR:</p>
+                        <ul class="list-disc pl-4 space-y-1">
+                            <li>Clique ou toque nos patos antes que escapem!</li>
+                            <li>Você tem <strong>3 cartuchos</strong> para cada rodada de patos.</li>
+                            <li>Acerte o mínimo de patos exigido para avançar de nível.</li>
+                            <li>A velocidade dos patos aumenta a cada nível!</li>
+                        </ul>
+                    </div>
+
+                    <button id="startBtn" class="w-full bg-red-600 hover:bg-red-500 active:translate-y-1 text-white py-3 px-6 rounded border-b-4 border-red-800 text-sm tracking-wider transition-all duration-150 uppercase font-bold">
+                        JOGAR AGORA!
+                    </button>
+                </div>
+            </div>
+
+            <!-- Overlay Tela de Fim de Jogo (Game Over) -->
+            <div id="gameOverOverlay" class="absolute inset-0 bg-black/85 flex flex-col items-center justify-center p-4 text-center z-20 hidden">
+                <div class="bg-gray-800 border-4 border-red-500 p-6 rounded-lg max-w-md w-full shadow-2xl">
+                    <h2 class="text-3xl text-red-500 mb-2">FIM DE JOGO</h2>
+                    <p id="gameOverReason" class="text-xs text-gray-300 mb-4">Os patos escaparam!</p>
+                    
+                    <div class="bg-black/50 p-4 rounded border border-gray-700 mb-6 space-y-2 text-xs">
+                        <div class="flex justify-between text-gray-300">
+                            <span>PONTUAÇÃO:</span>
+                            <span id="finalScore" class="text-yellow-400">0</span>
+                        </div>
+                        <div class="flex justify-between text-gray-300">
+                            <span>RODADA ALCANÇADA:</span>
+                            <span id="finalRound" class="text-green-400">1</span>
+                        </div>
+                        <div class="flex justify-between text-gray-300">
+                            <span>PATOS ABATIDOS:</span>
+                            <span id="finalDucks" class="text-sky-400">0</span>
+                        </div>
+                    </div>
+
+                    <button id="restartBtn" class="w-full bg-green-600 hover:bg-green-500 active:translate-y-1 text-white py-3 px-6 rounded border-b-4 border-green-800 text-sm tracking-wider transition-all duration-150 uppercase font-bold">
+                        TENTAR NOVAMENTE
+                    </button>
+                </div>
+            </div>
+
+            <!-- Flash de Tiro -->
+            <div id="flashOverlay" class="absolute inset-0 pointer-events-none z-10"></div>
+        </div>
+
+        <!-- Barra de Informações Inferior (Painel Retro) -->
+        <div class="w-full bg-gray-800 border-x-4 border-b-4 border-yellow-500 rounded-b-xl p-3 flex flex-wrap items-center justify-between gap-2 text-[10px] sm:text-xs">
+            
+            <!-- Munição -->
+            <div class="flex items-center space-x-2 bg-black/60 px-3 py-2 rounded border border-gray-700">
+                <span class="text-yellow-400">TIROS:</span>
+                <div id="ammoContainer" class="flex space-x-1">
+                    <!-- Balas renderizadas dinamicamente em JS -->
+                </div>
+            </div>
+
+            <!-- Indicador de Patos Acertados -->
+            <div class="flex items-center space-x-1 bg-black/60 px-3 py-2 rounded border border-gray-700">
+                <span class="text-gray-300 mr-1">PATOS:</span>
+                <div id="duckIconsContainer" class="flex space-x-1">
+                    <!-- Ícones dos patos da rodada (Hits/Misses) -->
+                </div>
+            </div>
+
+            <!-- Pontuação e Nível -->
+            <div class="flex items-center space-x-4 bg-black/60 px-3 py-2 rounded border border-gray-700">
+                <div>
+                    <span class="text-gray-400">RODADA:</span>
+                    <span id="roundDisplay" class="text-green-400 font-bold">1</span>
+                </div>
+                <div>
+                    <span class="text-gray-400">PONTOS:</span>
+                    <span id="scoreDisplay" class="text-yellow-400 font-bold">000000</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controles Secundários / Áudio / Instruções Breves -->
+        <div class="w-full flex justify-between items-center mt-3 text-[10px] text-gray-400 px-1">
+            <div class="flex items-center space-x-2">
+                <button id="muteBtn" class="bg-gray-800 hover:bg-gray-700 text-white px-3 py-1.5 rounded border border-gray-600 flex items-center space-x-1 transition-colors">
+                    <span id="muteIcon">🔊</span> <span id="muteText">SOM: LIGADO</span>
+                </button>
+            </div>
+            <div>
+                <span>RECORDE: <strong id="highScoreDisplay" class="text-yellow-500">000000</strong></span>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // ==========================================
+        // 1. GERENCIADOR DE ÁUDIO SINTETIZADO (Web Audio API)
+        // ==========================================
+        class SoundEngine {
+            constructor() {
+                this.ctx = null;
+                this.muted = false;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    this.ctx = new AudioCtx();
+                }
+                if (this.ctx.state === 'suspended') {
+                    this.ctx.resume();
+                }
+            }
+
+            // Som de tiro de espingarda
+            playShot() {
+                if (this.muted || !this.ctx) return;
+                
+                const now = this.ctx.currentTime;
+                // Ruído branco para explosão
+                const bufferSize = this.ctx.sampleRate * 0.2; // 200ms
+                const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+                const output = buffer.getChannelData(0);
+                for (let i = 0; i < bufferSize; i++) {
+                    output[i] = Math.random() * 2 - 1;
+                }
+
+                const whiteNoise = this.ctx.createBufferSource();
+                whiteNoise.buffer = buffer;
+
+                const filter = this.ctx.createBiquadFilter();
+                filter.type = 'lowpass';
+                filter.frequency.setValueAtTime(1000, now);
+                filter.frequency.linearRampToValueAtTime(100, now + 0.2);
+
+                const gain = this.ctx.createGain();
+                gain.gain.setValueAtTime(1, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.2);
+
+                whiteNoise.connect(filter);
+                filter.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                whiteNoise.start(now);
+            }
+
+            // Som de acerto no pato (Quack + Impacto)
+            playHit() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(400, now);
+                osc.frequency.exponentialRampToValueAtTime(150, now + 0.15);
+
+                gain.gain.setValueAtTime(0.5, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+
+            // Som do Grasno do Pato (Quack)
+            playQuack() {
+                if (this.muted || !this.ctx) return;
+                const now = this.ctx.currentTime;
+
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'square';
+                osc.frequency.setValueAtTime(300, now);
+                osc.frequency.setValueAtTime(450, now + 0.05);
+                osc.frequency.setValueAtTime(300, now + 0.1);
+
+                gain.gain.setValueAtTime(0.2, now);
+                gain.gain.exponentialRampToValueAtTime(0.01, now + 0.15);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start(now);
+                osc.stop(now + 0.15);
+            }
+
+            // Risada do Cão (quando pato escapa)
+            playLaugh() {
+                if (this.muted || !this.ctx) return;
+                let now = this.ctx.currentTime;
+
+                for (let i = 0; i < 3; i++) {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'triangle';
+                    osc.frequency.setValueAtTime(500, now + i * 0.12);
+                    osc.frequency.setValueAtTime(700, now + i * 0.12 + 0.05);
+
+                    gain.gain.setValueAtTime(0.3, now + i * 0.12);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + i * 0.12 + 0.08);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + i * 0.12);
+                    osc.stop(now + i * 0.12 + 0.09);
+                }
+            }
+
+            // Som de Início de Rodada / Sucesso
+            playFanfare() {
+                if (this.muted || !this.ctx) return;
+                const notes = [261.63, 329.63, 392.00, 523.25]; // C4, E4, G4, C5
+                const now = this.ctx.currentTime;
+
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+
+                    osc.type = 'square';
+                    osc.frequency.setValueAtTime(freq, now + idx * 0.1);
+
+                    gain.gain.setValueAtTime(0.2, now + idx * 0.1);
+                    gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.1 + 0.12);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(now + idx * 0.1);
+                    osc.stop(now + idx * 0.1 + 0.12);
+                });
+            }
+        }
+
+        // ==========================================
+        // 2. VARIÁVEIS DE ESTADO E CONFIGURAÇÃO
+        // ==========================================
+        const soundEngine = new SoundEngine();
+
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const gameContainer = document.getElementById('gameContainer');
+        const flashOverlay = document.getElementById('flashOverlay');
+
+        // Elementos de UI
+        const ammoContainer = document.getElementById('ammoContainer');
+        const duckIconsContainer = document.getElementById('duckIconsContainer');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const roundDisplay = document.getElementById('roundDisplay');
+        const highScoreDisplay = document.getElementById('highScoreDisplay');
+        const startOverlay = document.getElementById('startOverlay');
+        const gameOverOverlay = document.getElementById('gameOverOverlay');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const muteBtn = document.getElementById('muteBtn');
+
+        // Dimensões Virtuais Retrô (para manter proporção 8-bit independente da tela)
+        const GAME_WIDTH = 320;
+        const GAME_HEIGHT = 240;
+
+        // Estado do Jogo
+        let gameState = 'MENU'; // MENU, PLAYING, ROUND_CLEAR, GAME_OVER
+        let score = 0;
+        let highScore = localStorage.getItem('duck_hunt_highscore') || 0;
+        let round = 1;
+        let ammo = 3;
+        let ducksInRound = 10;
+        let ducksSpawned = 0;
+        let ducksHitCount = 0;
+        let roundDuckStatus = []; // 'HIT', 'MISSED', 'PENDING'
+        
+        let activeDucks = [];
+        let dogState = { active: false, type: 'INTRO', x: 120, y: 170, timer: 0 }; // INTRO, LAUGH, CAUGHT
+        let animationFrameId = null;
+
+        // Ajustar resolução interna do Canvas
+        canvas.width = GAME_WIDTH;
+        canvas.height = GAME_HEIGHT;
+
+        // ==========================================
+        // 3. CLASSE DO PATO (DUCK)
+        // ==========================================
+        class Duck {
+            constructor(speedMultiplier = 1) {
+                this.width = 24;
+                this.height = 22;
+                this.x = Math.random() * (GAME_WIDTH - 60) + 30;
+                this.y = 160; // Nasce atrás da vegetação
+                
+                const baseSpeed = 1.2 + Math.random() * 0.8;
+                this.vx = (Math.random() < 0.5 ? 1 : -1) * baseSpeed * speedMultiplier;
+                this.vy = -(1.5 + Math.random() * 1.0) * speedMultiplier;
+
+                this.state = 'FLYING'; // FLYING, HIT, FALLING, ESCAPED
+                this.frame = 0;
+                this.animTimer = 0;
+                this.quackTimer = Math.floor(Math.random() * 60) + 30;
+                
+                // Cores do pato estilo pixel
+                this.colorType = Math.random() < 0.6 ? 'CLASSIC' : (Math.random() < 0.5 ? 'BLUE' : 'RED');
+            }
+
+            update() {
+                if (this.state === 'FLYING') {
+                    this.x += this.vx;
+                    this.y += this.vy;
+
+                    // Rebatimento nas bordas laterais
+                    if (this.x <= 10 || this.x + this.width >= GAME_WIDTH - 10) {
+                        this.vx *= -1;
+                    }
+
+                    // Rebatimento no topo ou mudança aleatória de direção
+                    if (this.y <= 15) {
+                        this.vy = Math.abs(this.vy);
+                    } else if (this.y > 165) {
+                        this.vy = -Math.abs(this.vy);
+                    }
+
+                    // Mudança aleatória periódica de direção
+                    if (Math.random() < 0.02) {
+                        this.vx = (Math.random() < 0.5 ? 1 : -1) * Math.abs(this.vx);
+                    }
+
+                    // Animação de bater asas
+                    this.animTimer++;
+                    if (this.animTimer % 8 === 0) {
+                        this.frame = (this.frame + 1) % 3;
+                    }
+
+                    // Som de grasno ocasional
+                    this.quackTimer--;
+                    if (this.quackTimer <= 0) {
+                        soundEngine.playQuack();
+                        this.quackTimer = Math.floor(Math.random() * 120) + 80;
+                    }
+
+                } else if (this.state === 'HIT') {
+                    // Pequeno congelamento ao ser atingido antes de cair
+                    this.animTimer++;
+                    if (this.animTimer > 15) {
+                        this.state = 'FALLING';
+                    }
+                } else if (this.state === 'FALLING') {
+                    this.y += 3; // Cai rápido
+                    this.animTimer++;
+                    this.frame = Math.floor(this.animTimer / 6) % 2;
+                }
+            }
+
+            draw(ctx) {
+                ctx.save();
+
+                // Inverter pato horizontalmente dependendo da direção
+                if (this.vx < 0 && this.state === 'FLYING') {
+                    ctx.translate(this.x + this.width, this.y);
+                    ctx.scale(-1, 1);
+                } else {
+                    ctx.translate(this.x, this.y);
+                }
+
+                // Paleta de Cores de Acordo com o Tipo
+                let headColor = '#22c55e'; // Verde clássico
+                let bodyColor = '#854d0e'; // Castanho
+                if (this.colorType === 'BLUE') {
+                    headColor = '#3b82f6';
+                    bodyColor = '#1e3a8a';
+                } else if (this.colorType === 'RED') {
+                    headColor = '#ef4444';
+                    bodyColor = '#78350f';
+                }
+
+                if (this.state === 'FLYING') {
+                    // DESENHO EM PIXEL ART - PATO VOANDO
+                    // Corpo
+                    ctx.fillStyle = bodyColor;
+                    ctx.fillRect(4, 8, 14, 10);
+                    
+                    // Asas (animadas)
+                    ctx.fillStyle = '#fef08a';
+                    if (this.frame === 0) {
+                        ctx.fillRect(8, 2, 6, 8); // Asa para cima
+                    } else if (this.frame === 1) {
+                        ctx.fillRect(6, 9, 10, 4); // Asa no meio
+                    } else {
+                        ctx.fillRect(8, 11, 6, 8); // Asa para baixo
+                    }
+
+                    // Cabeça
+                    ctx.fillStyle = headColor;
+                    ctx.fillRect(14, 2, 7, 7);
+
+                    // Bico
+                    ctx.fillStyle = '#f97316';
+                    ctx.fillRect(21, 5, 5, 3);
+
+                    // Olho
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(17, 3, 2, 2);
+                    ctx.fillStyle = '#000000';
+                    ctx.fillRect(18, 4, 1, 1);
+
+                } else if (this.state === 'HIT') {
+                    // PATO ATINGIDO (Estilo chocado / 8-bit)
+                    ctx.fillStyle = '#ffffff';
+                    ctx.fillRect(2, 2, 18, 16);
+                    ctx.fillStyle = headColor;
+                    ctx.fillRect(6, 4, 10, 12);
+                    ctx.fillStyle = '#f97316';
+                    ctx.fillRect(16, 8, 4, 4);
+
+                } else if (this.state === 'FALLING') {
+                    // PATO CAINDO
+                    ctx.fillStyle = bodyColor;
+                    ctx.fillRect(6, 2, 10, 14);
+                    ctx.fillStyle = headColor;
+                    ctx.fillRect(7, 14, 8, 6);
+                    ctx.fillStyle = '#f97316';
+                    ctx.fillRect(9, 20, 4, 3);
+                }
+
+                ctx.restore();
+            }
+
+            // Teste de colisão de clique / tiro
+            isHit(gx, gy) {
+                return (
+                    gx >= this.x - 6 &&
+                    gx <= this.x + this.width + 6 &&
+                    gy >= this.y - 6 &&
+                    gy <= this.y + this.height + 6
+                );
+            }
+        }
+
+        // ==========================================
+        // 4. DESENHO DO CENÁRIO RETRÔ
+        // ==========================================
+        function drawBackground() {
+            // Céu
+            ctx.fillStyle = '#38bdf8'; // Azul claro
+            ctx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+            // Nuvens Pixeladas
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+            ctx.fillRect(30, 20, 40, 12);
+            ctx.fillRect(40, 14, 20, 8);
+
+            ctx.fillRect(200, 35, 50, 14);
+            ctx.fillRect(215, 27, 25, 10);
+
+            // Árvore Retrô (Esquerda)
+            ctx.fillStyle = '#78350f'; // Tronco
+            ctx.fillRect(25, 120, 14, 60);
+            ctx.fillStyle = '#15803d'; // Folhagem 8-bit
+            ctx.fillRect(10, 80, 44, 45);
+            ctx.fillRect(17, 65, 30, 20);
+            ctx.fillStyle = '#22c55e'; // Highlight da folhagem
+            ctx.fillRect(14, 84, 12, 12);
+
+            // Arbusto (Direita)
+            ctx.fillStyle = '#166534';
+            ctx.fillRect(230, 145, 55, 35);
+            ctx.fillRect(240, 135, 35, 15);
+
+            // Solo / Terreno Principal
+            ctx.fillStyle = '#84cc16'; // Relva superior
+            ctx.fillRect(0, 175, GAME_WIDTH, 12);
+            ctx.fillStyle = '#65a30d';
+            ctx.fillRect(0, 187, GAME_WIDTH, 53);
+
+            // Detalhes de relva pixelada
+            ctx.fillStyle = '#4d7c0f';
+            for (let x = 10; x < GAME_WIDTH; x += 30) {
+                ctx.fillRect(x, 172, 4, 5);
+                ctx.fillRect(x + 10, 170, 4, 7);
+            }
+        }
+
+        // Desenhar Cão de Caça Retrô (Animação de risada ou busca de pato)
+        function drawDog() {
+            if (!dogState.active) return;
+
+            ctx.save();
+            ctx.translate(dogState.x, dogState.y);
+
+            if (dogState.type === 'LAUGH') {
+                // CÃO RINDO DO JOGADOR
+                ctx.fillStyle = '#a16207'; // Cor do cão
+                ctx.fillRect(4, 4, 18, 22);
+                ctx.fillRect(2, 10, 22, 16);
+
+                // Orelhas
+                ctx.fillStyle = '#451a03';
+                ctx.fillRect(1, 4, 5, 12);
+                ctx.fillRect(19, 4, 5, 12);
+
+                // Focinho
+                ctx.fillStyle = '#fef08a';
+                ctx.fillRect(7, 12, 12, 10);
+                ctx.fillStyle = '#000000';
+                ctx.fillRect(11, 11, 4, 3); // Nariz
+
+                // Animação de risada (sobe e desce braços/boca)
+                const laughShift = Math.floor(Date.now() / 100) % 2;
+                ctx.fillStyle = '#ef4444'; // Língua de fora
+                ctx.fillRect(11, 16 + laughShift, 4, 5);
+
+            } else if (dogState.type === 'CAUGHT') {
+                // CÃO SEGURANDO PATO
+                ctx.fillStyle = '#a16207';
+                ctx.fillRect(6, 6, 16, 20);
+                
+                // Cabeça do pato morto na mão do cão
+                ctx.fillStyle = '#22c55e';
+                ctx.fillRect(1, 10, 8, 8);
+                ctx.fillStyle = '#f97316';
+                ctx.fillRect(0, 14, 4, 3);
+            }
+
+            ctx.restore();
+        }
+
+        // ==========================================
+        // 5. ATUALIZAÇÃO DA INTERFACE (HUD)
+        // ==========================================
+        function updateHUD() {
+            // Pontuação com zero-padding (ex: 001200)
+            scoreDisplay.textContent = String(score).padStart(6, '0');
+            roundDisplay.textContent = round;
+            highScoreDisplay.textContent = String(highScore).padStart(6, '0');
+
+            // Renderizar munição restante
+            ammoContainer.innerHTML = '';
+            for (let i = 0; i < 3; i++) {
+                const bullet = document.createElement('div');
+                bullet.className = `w-2.5 h-5 rounded-sm border border-yellow-700 ${
+                    i < ammo ? 'bg-yellow-400 shadow-[0_0_4px_rgba(250,204,21,0.8)]' : 'bg-gray-700 opacity-30'
+                }`;
+                ammoContainer.appendChild(bullet);
+            }
+
+            // Renderizar ícones da rodada
+            duckIconsContainer.innerHTML = '';
+            for (let i = 0; i < ducksInRound; i++) {
+                const duckIcon = document.createElement('span');
+                duckIcon.className = 'text-xs font-bold transition-transform';
+                if (i < roundDuckStatus.length) {
+                    if (roundDuckStatus[i] === 'HIT') {
+                        duckIcon.textContent = '🦆';
+                        duckIcon.className += ' text-red-500 scale-110';
+                    } else {
+                        duckIcon.textContent = '🦆';
+                        duckIcon.className += ' text-gray-600 opacity-40';
+                    }
+                } else {
+                    duckIcon.textContent = '🦆';
+                    duckIcon.className += ' text-white opacity-20';
+                }
+                duckIconsContainer.appendChild(duckIcon);
+            }
+        }
+
+        // FLASH VISUAL DE TIRO
+        function triggerGunFlash() {
+            flashOverlay.classList.add('flash');
+            setTimeout(() => {
+                flashOverlay.classList.remove('flash');
+            }, 80);
+        }
+
+        // ==========================================
+        // 6. LÓGICA DE RODADA E CICLO DO JOGO
+        // ==========================================
+        function startNewRound() {
+            gameState = 'PLAYING';
+            ducksSpawned = 0;
+            ducksHitCount = 0;
+            roundDuckStatus = [];
+            activeDucks = [];
+            dogState.active = false;
+            
+            updateHUD();
+            soundEngine.playFanfare();
+
+            setTimeout(() => {
+                spawnDuckPair();
+            }, 1000);
+        }
+
+        function spawnDuckPair() {
+            if (ducksSpawned >= ducksInRound) {
+                // Fim da Rodada - Avaliar Desempenho
+                evaluateRoundEnd();
+                return;
+            }
+
+            ammo = 3;
+            updateHUD();
+
+            // Criar novo Pato com velocidade incremental baseada no Nível/Rodada
+            const speedMultiplier = 1 + (round - 1) * 0.25;
+            const duck = new Duck(speedMultiplier);
+            activeDucks = [duck];
+            ducksSpawned++;
+        }
+
+        function evaluateRoundEnd() {
+            // Mínimo necessário para avançar: 6 patos abatidos
+            const minRequired = 6;
+            if (ducksHitCount >= minRequired) {
+                gameState = 'ROUND_CLEAR';
+                round++;
+                setTimeout(() => {
+                    startNewRound();
+                }, 2000);
+            } else {
+                // Game Over
+                triggerGameOver(`Você acertou apenas ${ducksHitCount} de 10 patos. Mínimo necessário: ${minRequired}.`);
+            }
+        }
+
+        function triggerGameOver(reason) {
+            gameState = 'GAME_OVER';
+            if (score > highScore) {
+                highScore = score;
+                localStorage.setItem('duck_hunt_highscore', highScore);
+            }
+
+            document.getElementById('finalScore').textContent = String(score).padStart(6, '0');
+            document.getElementById('finalRound').textContent = round;
+            document.getElementById('finalDucks').textContent = ducksHitCount;
+            document.getElementById('gameOverReason').textContent = reason;
+
+            gameOverOverlay.classList.remove('hidden');
+        }
+
+        // ==========================================
+        // 7. INPUT / CONTROLE DE TIRO
+        // ==========================================
+        function handleShoot(clientX, clientY) {
+            if (gameState !== 'PLAYING') return;
+            if (ammo <= 0) return;
+
+            soundEngine.init();
+
+            // Obter coordenadas ajustadas para o Canvas
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = GAME_WIDTH / rect.width;
+            const scaleY = GAME_HEIGHT / rect.height;
+
+            const clickX = (clientX - rect.left) * scaleX;
+            const clickY = (clientY - rect.top) * scaleY;
+
+            ammo--;
+            soundEngine.playShot();
+            triggerGunFlash();
+            updateHUD();
+
+            let hitAny = false;
+
+            activeDucks.forEach((duck) => {
+                if (duck.state === 'FLYING' && duck.isHit(clickX, clickY)) {
+                    duck.state = 'HIT';
+                    hitAny = true;
+                    ducksHitCount++;
+                    score += 500 * round;
+                    roundDuckStatus.push('HIT');
+                    soundEngine.playHit();
+
+                    // Cão aparece comemorando
+                    setTimeout(() => {
+                        dogState = { active: true, type: 'CAUGHT', x: duck.x, y: 145, timer: 45 };
+                    }, 400);
+                }
+            });
+
+            // Se acabou a munição e não acertou pato voando
+            if (ammo === 0 && !hitAny) {
+                activeDucks.forEach(duck => {
+                    if (duck.state === 'FLYING') {
+                        duck.state = 'ESCAPED';
+                    }
+                });
+            }
+        }
+
+        // Eventos de Clique / Toque no Canvas
+        canvas.addEventListener('mousedown', (e) => {
+            e.preventDefault();
+            handleShoot(e.clientX, e.clientY);
+        });
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                handleShoot(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }, { passive: false });
+
+        // ==========================================
+        // 8. LOOP PRINCIPAL DO JOGO (GAME LOOP)
+        // ==========================================
+        function gameLoop() {
+            // Limpar Canvas e Redesenhar Fundo
+            ctx.clearRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+            drawBackground();
+
+            if (gameState === 'PLAYING') {
+                // Atualizar e desenhar Patos
+                let allDucksFinished = true;
+
+                activeDucks.forEach((duck) => {
+                    duck.update();
+                    duck.draw(ctx);
+
+                    // Se pato saiu da tela (escapou)
+                    if (duck.state === 'FLYING' && duck.y < -30) {
+                        duck.state = 'ESCAPED';
+                        roundDuckStatus.push('MISSED');
+                        
+                        // Cão Rindo do jogador
+                        dogState = { active: true, type: 'LAUGH', x: duck.x, y: 145, timer: 60 };
+                        soundEngine.playLaugh();
+                    }
+
+                    // Se o pato caiu no chão após ser atingido
+                    if (duck.state === 'FALLING' && duck.y > 160) {
+                        duck.state = 'DEAD';
+                    }
+
+                    if (duck.state === 'FLYING' || duck.state === 'HIT' || duck.state === 'FALLING') {
+                        allDucksFinished = false;
+                    }
+                });
+
+                // Se todos os patos do par atual terminaram sua ação
+                if (allDucksFinished && activeDucks.length > 0) {
+                    activeDucks = [];
+                    setTimeout(() => {
+                        spawnDuckPair();
+                    }, 800);
+                }
+
+                // Timer da animação do Cão
+                if (dogState.active) {
+                    dogState.timer--;
+                    if (dogState.timer <= 0) {
+                        dogState.active = false;
+                    }
+                }
+            }
+
+            drawDog();
+
+            // Manter Loop de Animação
+            animationFrameId = requestAnimationFrame(gameLoop);
+        }
+
+        // ==========================================
+        // 9. INICIALIZAÇÃO DE BOTEIROS E BOTÕES DE UI
+        // ==========================================
+        startBtn.addEventListener('click', () => {
+            soundEngine.init();
+            startOverlay.classList.add('hidden');
+            gameOverOverlay.classList.add('hidden');
+            score = 0;
+            round = 1;
+            startNewRound();
+        });
+
+        restartBtn.addEventListener('click', () => {
+            soundEngine.init();
+            gameOverOverlay.classList.add('hidden');
+            score = 0;
+            round = 1;
+            startNewRound();
+        });
+
+        muteBtn.addEventListener('click', () => {
+            soundEngine.init();
+            soundEngine.muted = !soundEngine.muted;
+            document.getElementById('muteIcon').textContent = soundEngine.muted ? '🔇' : '🔊';
+            document.getElementById('muteText').textContent = soundEngine.muted ? 'SOM: DESLIGADO' : 'SOM: LIGADO';
+        });
+
+        // Inicializar Estado Inicial ao carregar a página
+        window.onload = () => {
+            highScoreDisplay.textContent = String(highScore).padStart(6, '0');
+            updateHUD();
+            // Iniciar o loop de renderização do canvas
+            gameLoop();
+        };
+    </script>
+</body>
+</html>

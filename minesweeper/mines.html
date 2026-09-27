@@ -1,0 +1,474 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D Minesweeper Walker</title>
+    <style>
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            background-color: #0d0d11;
+            color: #fff;
+            user-select: none;
+        }
+
+        /* HUD Superior */
+        #hud-top {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 12px 20px;
+            border-radius: 6px;
+            border-left: 4px solid #00f0ff;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.5);
+            z-index: 10;
+        }
+        #hud-top div { margin-bottom: 4px; font-size: 16px; letter-spacing: 1px; }
+
+        /* HUD Inferior (Teclas) */
+        #hud-bottom {
+            position: absolute;
+            bottom: 25px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 25px;
+            border-radius: 30px;
+            border: 1px solid rgba(255,255,255,0.2);
+            font-size: 13px;
+            font-weight: bold;
+            letter-spacing: 1px;
+            z-index: 10;
+        }
+        .key-group { display: flex; align-items: center; gap: 4px; }
+        .key {
+            background: #222;
+            border: 1px solid #fff;
+            border-radius: 4px;
+            padding: 2px 6px;
+            font-size: 11px;
+        }
+
+        /* Mensagem Ecrã Final */
+        #message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 28px;
+            font-weight: bold;
+            text-align: center;
+            display: none;
+            background: rgba(10, 10, 15, 0.95);
+            padding: 35px 60px;
+            border-radius: 12px;
+            border: 2px solid #00f0ff;
+            box-shadow: 0 0 30px rgba(0, 240, 255, 0.3);
+            z-index: 100;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+
+    <div id="hud-top">
+        <div>MINAS RESTANTES: <span id="mines-count">12</span></div>
+        <div>TEMPO: <span id="timer">00:00</span></div>
+    </div>
+
+    <div id="message"></div>
+
+    <div id="hud-bottom">
+        <div class="key-group">
+            <span class="key">W</span><span class="key">A</span><span class="key">S</span><span class="key">D</span>
+            <span style="margin-left: 5px;">MOVER</span>
+        </div>
+        <div class="key-group">
+            <span class="key">ESPAÇO</span>
+            <span style="margin-left: 5px;">MARCAR</span>
+        </div>
+    </div>
+
+    <script>
+        // --- CONFIGURAÇÕES ---
+        const GRID_W = 10;
+        const GRID_D = 16;
+        const MINE_COUNT = 18;
+        const TILE_SIZE = 1.8;
+        const GAP = 0.15;
+
+        let playerPos = { x: Math.floor(GRID_W / 2), z: 0 };
+        let grid = [];
+        let gameOver = false;
+        let startTime = Date.now();
+        let timerInterval;
+
+        // --- CENA THREE.JS ---
+        const scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x121016);
+        scene.fog = new THREE.FogExp2(0x121016, 0.025);
+
+        const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.shadowMap.enabled = true;
+        document.body.appendChild(renderer.domElement);
+
+        // Luzes Estilo Sci-Fi/Dark
+        const ambientLight = new THREE.AmbientLight(0xffffff, 0.3);
+        scene.add(ambientLight);
+
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.7);
+        dirLight.position.set(20, 40, 20);
+        dirLight.castShadow = true;
+        scene.add(dirLight);
+
+        // --- MODELO DO PERSONAGEM (HUMANÓIDE CYAN GLOW) ---
+        const playerGroup = new THREE.Group();
+        const cyanMat = new THREE.MeshStandardMaterial({
+            color: 0x00f0ff,
+            emissive: 0x00a0ff,
+            emissiveIntensity: 0.6,
+            roughness: 0.2
+        });
+
+        // Cabeça
+        const head = new THREE.Mesh(new THREE.BoxGeometry(0.5, 0.5, 0.5), cyanMat);
+        head.position.y = 1.3;
+        playerGroup.add(head);
+
+        // Tronco
+        const torso = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.7, 0.4), cyanMat);
+        torso.position.y = 0.7;
+        playerGroup.add(torso);
+
+        // Braços
+        const armL = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), cyanMat);
+        armL.position.set(-0.45, 0.7, 0);
+        playerGroup.add(armL);
+
+        const armR = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.2), cyanMat);
+        armR.position.set(0.45, 0.7, 0);
+        playerGroup.add(armR);
+
+        // Pernas
+        const legL = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.6, 0.22), cyanMat);
+        legL.position.set(-0.2, 0.2, 0);
+        playerGroup.add(legL);
+
+        const legR = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.6, 0.22), cyanMat);
+        legR.position.set(0.2, 0.2, 0);
+        playerGroup.add(legR);
+
+        // Luz própria do personagem
+        const pLight = new THREE.PointLight(0x00f0ff, 1.5, 6);
+        pLight.position.set(0, 1, 0);
+        playerGroup.add(pLight);
+
+        scene.add(playerGroup);
+
+        // --- GERADOR DE TEXTURAS COM NÚMEROS 2D -> 3D ---
+        const numberTextures = {};
+        function getNumberTexture(num) {
+            if (numberTextures[num]) return numberTextures[num];
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 128;
+            canvas.height = 128;
+            const ctx = canvas.getContext('2d');
+
+            ctx.fillStyle = '#2b2c34';
+            ctx.fillRect(0, 0, 128, 128);
+
+            const colors = ['', '#00a2ff', '#a2ff00', '#ff6600', '#ff0055'];
+            ctx.fillStyle = colors[num] || '#ffffff';
+            ctx.font = 'Bold 80px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(num, 64, 64);
+
+            const texture = new THREE.CanvasTexture(canvas);
+            numberTextures[num] = texture;
+            return texture;
+        }
+
+        // --- CIANÇÃO DO PORTAL DE FINISH ---
+        function createFinishPortal(xPos, zPos) {
+            const portalGroup = new THREE.Group();
+            const frameMat = new THREE.MeshStandardMaterial({
+                color: 0x00ff66,
+                emissive: 0x00ff66,
+                emissiveIntensity: 0.8
+            });
+
+            // Estrutura do Portal
+            const top = new THREE.Mesh(new THREE.BoxGeometry(2.2, 0.3, 0.3), frameMat);
+            top.position.y = 2.5;
+            const left = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.5, 0.3), frameMat);
+            left.position.set(-1, 1.25, 0);
+            const right = new THREE.Mesh(new THREE.BoxGeometry(0.3, 2.5, 0.3), frameMat);
+            right.position.set(1, 1.25, 0);
+
+            portalGroup.add(top, left, right);
+
+            // Texto "FINISH"
+            const canvas = document.createElement('canvas');
+            canvas.width = 256; canvas.height = 64;
+            const ctx = canvas.getContext('2d');
+            ctx.fillStyle = '#00ff66';
+            ctx.font = 'Bold 40px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('FINISH', 128, 45);
+            
+            const tex = new THREE.CanvasTexture(canvas);
+            const label = new THREE.Mesh(
+                new THREE.PlaneGeometry(2, 0.5),
+                new THREE.MeshBasicMaterial({ map: tex, transparent: true })
+            );
+            label.position.set(0, 2.9, 0);
+            portalGroup.add(label);
+
+            portalGroup.position.set(xPos, 0, zPos);
+            scene.add(portalGroup);
+        }
+
+        // --- CIANÇÃO DE MODELO DE MINA 3D ---
+        function createMineModel() {
+            const group = new THREE.Group();
+            const base = new THREE.Mesh(
+                new THREE.CylinderGeometry(0.5, 0.6, 0.2, 8),
+                new THREE.MeshStandardMaterial({ color: 0x222222, metalness: 0.8 })
+            );
+            const redLight = new THREE.Mesh(
+                new THREE.SphereGeometry(0.15, 16, 16),
+                new THREE.MeshStandardMaterial({ color: 0xff0000, emissive: 0xff0000, emissiveIntensity: 1 })
+            );
+            redLight.position.y = 0.2;
+            group.add(base, redLight);
+
+            const pL = new THREE.PointLight(0xff0000, 1, 3);
+            pL.position.y = 0.3;
+            group.add(pL);
+
+            return group;
+        }
+
+        // --- INICIALIZAÇÃO DA GRELHA ---
+        function initGrid() {
+            grid.forEach(col => col.forEach(cell => {
+                if (cell.mesh) scene.remove(cell.mesh);
+                if (cell.mineObj) scene.remove(cell.mineObj);
+            }));
+
+            grid = [];
+            for (let x = 0; x < GRID_W; x++) {
+                grid[x] = [];
+                for (let z = 0; z < GRID_D; z++) {
+                    grid[x][z] = { isMine: false, count: 0, revealed: false, flagged: false, mesh: null, mineObj: null };
+                }
+            }
+
+            // Minas Aleatórias (Evitar z=0 e z=GRID_D-1)
+            let placed = 0;
+            while (placed < MINE_COUNT) {
+                let rx = Math.floor(Math.random() * GRID_W);
+                let rz = Math.floor(Math.random() * (GRID_D - 2)) + 1;
+                if (!grid[rx][rz].isMine) {
+                    grid[rx][rz].isMine = true;
+                    placed++;
+                }
+            }
+
+            // Calcular Vizinhos
+            for (let x = 0; x < GRID_W; x++) {
+                for (let z = 0; z < GRID_D; z++) {
+                    if (grid[x][z].isMine) continue;
+                    let c = 0;
+                    for (let dx = -1; dx <= 1; dx++) {
+                        for (let dz = -1; dz <= 1; dz++) {
+                            let nx = x + dx, nz = z + dz;
+                            if (nx >= 0 && nx < GRID_W && nz >= 0 && nz < GRID_D && grid[nx][nz].isMine) c++;
+                        }
+                    }
+                    grid[x][z].count = c;
+                }
+            }
+
+            // Construir Piso 3D
+            const totalW = GRID_W * (TILE_SIZE + GAP);
+            const totalD = GRID_D * (TILE_SIZE + GAP);
+
+            for (let x = 0; x < GRID_W; x++) {
+                for (let z = 0; z < GRID_D; z++) {
+                    const geo = new THREE.BoxGeometry(TILE_SIZE, 0.4, TILE_SIZE);
+                    const mat = new THREE.MeshStandardMaterial({ color: 0x2b2c34, roughness: 0.5 });
+                    const tile = new THREE.Mesh(geo, mat);
+
+                    const posX = x * (TILE_SIZE + GAP) - totalW / 2 + TILE_SIZE / 2;
+                    const posZ = z * (TILE_SIZE + GAP) - totalD / 2 + TILE_SIZE / 2;
+
+                    tile.position.set(posX, -0.2, posZ);
+                    tile.receiveShadow = true;
+                    scene.add(tile);
+
+                    grid[x][z].mesh = tile;
+
+                    // Colocar Portal na Meta
+                    if (z === GRID_D - 1 && x === Math.floor(GRID_W / 2)) {
+                        createFinishPortal(posX, posZ);
+                    }
+                }
+            }
+
+            document.getElementById('mines-count').innerText = MINE_COUNT;
+            startTime = Date.now();
+        }
+
+        function getRealPos(gx, gz) {
+            const totalW = GRID_W * (TILE_SIZE + GAP);
+            const totalD = GRID_D * (TILE_SIZE + GAP);
+            return {
+                x: gx * (TILE_SIZE + GAP) - totalW / 2 + TILE_SIZE / 2,
+                z: gz * (TILE_SIZE + GAP) - totalD / 2 + TILE_SIZE / 2
+            };
+        }
+
+        // --- ATUALIZAÇÃO DO JOGADOR ---
+        let isMoving = false;
+        function updatePlayerPos() {
+            const pos = getRealPos(playerPos.x, playerPos.z);
+            
+            playerGroup.position.x = pos.x;
+            playerGroup.position.z = pos.z;
+
+            // Ajuste da Câmara em Perspetiva Angulada
+            camera.position.set(pos.x, 8, pos.z - 7);
+            camera.lookAt(pos.x, 0, pos.z + 3);
+
+            const cell = grid[playerPos.x][playerPos.z];
+            cell.revealed = true;
+
+            if (cell.isMine) {
+                // PISOU NUMA MINA
+                const mine = createMineModel();
+                mine.position.set(pos.x, 0, pos.z);
+                scene.add(mine);
+                cell.mesh.material.color.setHex(0xff2222);
+                endGame(false);
+            } else if (playerPos.z === GRID_D - 1) {
+                // CHEGOU À META
+                endGame(true);
+            } else {
+                // NÚMERO OU PISO LIMPO
+                if (cell.count > 0) {
+                    const topMat = new THREE.MeshBasicMaterial({ map: getNumberTexture(cell.count) });
+                    const sideMat = new THREE.MeshStandardMaterial({ color: 0x1f2026 });
+                    cell.mesh.material = [sideMat, sideMat, topMat, sideMat, sideMat, sideMat];
+                } else {
+                    cell.mesh.material.color.setHex(0x1a1b20);
+                }
+            }
+        }
+
+        function endGame(won) {
+            gameOver = true;
+            clearInterval(timerInterval);
+            const msg = document.getElementById('message');
+            msg.style.display = 'block';
+
+            if (won) {
+                msg.innerHTML = "MISSÃO CUMPRIDA!<br><span style='font-size:16px; color:#fff;'>Pressiona ESPAÇO para reiniciar</span>";
+                msg.style.color = "#00f0ff";
+            } else {
+                msg.innerHTML = "EXPLOSÃO DETECTADA!<br><span style='font-size:16px; color:#fff;'>Pressiona ESPAÇO para tentar de novo</span>";
+                msg.style.color = "#ff3333";
+
+                // Mostrar todas as minas
+                for (let x = 0; x < GRID_W; x++) {
+                    for (let z = 0; z < GRID_D; z++) {
+                        if (grid[x][z].isMine) {
+                            const p = getRealPos(x, z);
+                            const m = createMineModel();
+                            m.position.set(p.x, 0, p.z);
+                            scene.add(m);
+                        }
+                    }
+                }
+            }
+        }
+
+        function resetGame() {
+            gameOver = false;
+            playerPos = { x: Math.floor(GRID_W / 2), z: 0 };
+            document.getElementById('message').style.display = 'none';
+            initGrid();
+            updatePlayerPos();
+
+            clearInterval(timerInterval);
+            timerInterval = setInterval(() => {
+                const elapsed = Math.floor((Date.now() - startTime) / 1000);
+                const m = String(Math.floor(elapsed / 60)).padStart(2, '0');
+                const s = String(elapsed % 60).padStart(2, '0');
+                document.getElementById('timer').innerText = `${m}:${s}`;
+            }, 1000);
+        }
+
+        // --- TECLAS E MOVIMENTO DA PERSONAGEM ---
+        window.addEventListener('keydown', (e) => {
+            if (gameOver) {
+                if (e.code === 'Space') resetGame();
+                return;
+            }
+
+            let nx = playerPos.x;
+            let nz = playerPos.z;
+
+            if (e.code === 'KeyW' || e.code === 'ArrowUp') nz += 1;
+            else if (e.code === 'KeyS' || e.code === 'ArrowDown') nz -= 1;
+            else if (e.code === 'KeyA' || e.code === 'ArrowLeft') nx -= 1;
+            else if (e.code === 'KeyD' || e.code === 'ArrowRight') nx += 1;
+
+            if (nx >= 0 && nx < GRID_W && nz >= 0 && nz < GRID_D) {
+                playerPos.x = nx;
+                playerPos.z = nz;
+                isMoving = true;
+                updatePlayerPos();
+            }
+        });
+
+        // --- ANIMAÇÃO DE CORRIDA E FLUTUAÇÃO ---
+        function animate() {
+            requestAnimationFrame(animate);
+
+            const time = Date.now() * 0.008;
+
+            // Animação dos braços e pernas ao deslocar
+            if (!gameOver) {
+                legL.rotation.x = Math.sin(time * 2) * 0.6;
+                legR.rotation.x = -Math.sin(time * 2) * 0.6;
+                armL.rotation.x = -Math.sin(time * 2) * 0.6;
+                armR.rotation.x = Math.sin(time * 2) * 0.6;
+                
+                playerGroup.position.y = 0.2 + Math.abs(Math.sin(time * 2)) * 0.1;
+            }
+
+            renderer.render(scene, camera);
+        }
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+
+        resetGame();
+        animate();
+    </script>
+</body>
+</html>
